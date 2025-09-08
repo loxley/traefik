@@ -1,0 +1,15 @@
+services:
+  traefik:
+    image: traefik:v3.5         # Använd Traefik version 3.5 som containerimage
+    command:
+      - "--api.insecure=true"   # Aktiverar det inbyggda API:t och dashboard i osäkrat läge (ingen auth/https)
+      - "--providers.docker=true" # Gör så att Traefik automatiskt läser konfiguration från Docker-containrar
+      - "--entrypoints.web.address=:80" # Skapar ett entrypoint på port 80 (HTTP-ingång)
+    ports:
+      - "80:80"                 # Exponerar port 80 på hosten → port 80 i containern (HTTP trafik)
+      - "8080:8080"             # Exponerar port 8080 på hosten → port 8080 i containern (dashboard/API)
+                                # Dashboarden blir då tillgänglig på http://localhost:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock 
+                                # Monterar Docker socket så Traefik kan läsa info om andra containrar
+
