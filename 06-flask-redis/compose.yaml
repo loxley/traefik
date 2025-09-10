@@ -1,0 +1,52 @@
+networks:
+  proxy:
+    name: proxy # 'name' sätter ett fast namn dvs inget docker compose genererat network namn
+  db:
+    name: db
+
+services:
+  traefik:
+    image: traefik:v3.5
+    command:
+      - --api.dashboard=true                         # aktiverar dashboard
+      - --api.insecure=true                          # tillåter access på den oskyddade porten 8080
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false    # förhindrar att alla containers med EXPOSE eller ports: blir automatiskt exponerade av Traefik
+      - --entrypoints.web.address=:80                # skapa en ingång/entrypoint som lyssnar på port 80 (http)
+    ports:
+      - '80:80'                                      # port forward port 80 till port 80 på Traefik
+      - '8080:8080'                                  # port forward port 8080 till port 8080 på Traefik för dashboard åtkomst
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Låt Traefik få tillgång till docker socket för att kunna läsa vilka containers som kör och metadata (labels) för automatiskt routing
+    networks:
+      - proxy                                        # Lägg Traefik i proxy network
+
+  redis:
+    image: redislabs/redismod
+    # ports:                                         Behövs inte längre då web och db ligger i samma network (db)
+    #   - '6379:6379'
+    networks:
+      - db                                           # Lägg redis i db network
+
+  web:
+    build:
+      context: .
+      target: builder
+    # flask requires SIGINT to stop gracefully
+    # (default stop signal from Compose is SIGTERM)
+    stop_signal: SIGINT
+    labels:
+      - traefik.enable=true                                      # Denna vill vi att Traefik ska exponera
+      - traefik.docker.network=proxy                             # Tala om för Traefik att den ska använda proxy network för att nå web containern
+      - traefik.http.routers.web.rule=Host(`frontend.localhost`) # Om HTTP request med host header 'Host: frontend.localhost' så ska den matcha denna routern 
+      - traefik.http.routers.web.entrypoints=web                 # Routern ska lyssna på entrypoint web
+      - traefik.http.services.web.loadbalancer.server.port=8000  # Tala om för Traefik vilken port i containern den ska skicka trafik till (8000)
+    # ports:
+    #   - '8000:8000'
+    volumes:
+      - .:/code
+    depends_on:
+      - redis
+    networks:
+      - proxy                                         # proxy network så Traefik kan skicka trafik som kommer in till den
+      - db                                            # db network så web kan prata med redis containern
